@@ -1,0 +1,680 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Modern Tank Control HMI</title>
+    <style>
+        :root {
+            /* Industrial Theme Palette */
+            --bg-color: #a0a3a9;
+            --panel-bg: rgba(255,255,255,0.15);
+            
+            /* Metallic Pipe Gradient Simulation colors */
+            --pipe-grad-1: #f7f7f7;
+            --pipe-grad-2: #bfc1c4;
+            --pipe-grad-3: #8f9399;
+            
+            --liquid-color: #0cc2ff;
+            --liquid-top: #73e0ff;
+            
+            --success: #00c853; /* Green */
+            --danger: #d50000;  /* Red */
+            --warning: #ffd600;
+            
+            --text-main: #1f2c38;
+            --text-muted: #455a64;
+            --border-light: rgba(255,255,255,0.4);
+            --border-dark: rgba(0,0,0,0.1);
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: var(--bg-color);
+            /* Dotted Grid Pattern */
+            background-image: radial-gradient(rgba(255,255,255,0.28) 1px, transparent 1px);
+            background-size: 16px 16px;
+            
+            color: var(--text-main);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+
+        #hmi-scaler {
+            transform-origin: center center;
+            transition: transform 0.1s ease-out;
+            width: 1040px;
+            height: 700px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .hmi-canvas {
+            width: 100%;
+            height: 100%;
+            background: var(--panel-bg);
+            border-radius: 24px;
+            /* Inset shadow for depth */
+            box-shadow: inset 0 1px 2px rgba(255,255,255,0.5), 
+                        inset 0 0 30px rgba(0,0,0,0.05),
+                        0 20px 40px rgba(0,0,0,0.2);
+            position: relative;
+            overflow: hidden;
+            border: 1px solid rgba(255,255,255,0.3);
+        }
+
+        /* --- Header / Status Bar --- */
+        .status-bar {
+            height: 80px;
+            border-bottom: 1px solid var(--border-dark);
+            display: flex;
+            align-items: center;
+            padding: 0 40px;
+            justify-content: space-between;
+            background: rgba(255,255,255,0.2);
+            backdrop-filter: blur(5px);
+        }
+
+        .system-title h1 {
+            margin: 0;
+            font-size: 24px;
+            font-weight: 700;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            color: var(--text-main);
+            text-shadow: 0 1px 0 rgba(255,255,255,0.5);
+        }
+        .system-title span {
+            color: var(--text-muted);
+            font-size: 14px;
+            display: block;
+            margin-top: 4px;
+            font-weight: 600;
+        }
+
+        /* --- Process Tags (Floating Values) --- */
+        .process-tag {
+            position: absolute;
+            background: linear-gradient(180deg, #f5f5f5, #e0e0e0);
+            padding: 6px 12px;
+            border-radius: 4px;
+            border: 1px solid #90a4ae;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.15);
+            min-width: 80px;
+            text-align: center;
+            z-index: 50;
+        }
+        
+        .process-tag .tag-name {
+            display: block;
+            font-size: 10px;
+            color: #546e7a;
+            font-weight: 700;
+            border-bottom: 1px solid #cfd8dc;
+            padding-bottom: 2px;
+            margin-bottom: 2px;
+        }
+
+        .process-tag .tag-val {
+            font-family: 'Consolas', monospace;
+            font-size: 16px;
+            font-weight: bold;
+            color: #0277bd;
+        }
+
+        .process-tag .tag-unit {
+            font-size: 10px;
+            color: #78909c;
+            margin-left: 2px;
+        }
+
+        /* Specific Tag Locations */
+        .tag-level { left: 630px; top: 180px; transform: translateX(-50%); } 
+        .tag-flow-in { left: 400px; top: 190px; } 
+        .tag-flow-out { left: 880px; top: 470px; } 
+
+
+        /* --- Process Area --- */
+        .process-area {
+            position: relative;
+            height: calc(100% - 80px);
+            width: 100%;
+        }
+
+        /* --- Pipes (Metallic Style) --- */
+        .pipe {
+            position: absolute;
+            background: linear-gradient(90deg, var(--pipe-grad-1) 0%, var(--pipe-grad-2) 45%, var(--pipe-grad-3) 55%, var(--pipe-grad-1) 100%);
+            box-shadow: 0 3px 5px rgba(0,0,0,0.2);
+            z-index: 1;
+            border: 1px solid #999;
+        }
+        .pipe-v {
+            background: linear-gradient(0deg, var(--pipe-grad-1) 0%, var(--pipe-grad-2) 45%, var(--pipe-grad-3) 55%, var(--pipe-grad-1) 100%);
+        }
+
+        /* Flow Animation Texture Overlay */
+        .pipe::after, .pipe-elbow::after {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            opacity: 0;
+            transition: opacity 0.5s;
+            mix-blend-mode: hard-light; 
+        }
+
+        .pipe.flowing::after, .pipe-elbow.flowing::after {
+            opacity: 1;
+            background-color: rgba(33, 150, 243, 0.4); 
+            background-image: repeating-linear-gradient(
+                90deg,
+                rgba(255,255,255,0) 0,
+                rgba(255,255,255,0.4) 15px,
+                rgba(255,255,255,0) 30px
+            );
+            background-size: 60px 100%;
+            animation: flow-h 0.8s linear infinite;
+        }
+
+        .pipe-v.flowing::after {
+            background-image: repeating-linear-gradient(
+                0deg,
+                rgba(255,255,255,0) 0,
+                rgba(255,255,255,0.4) 15px,
+                rgba(255,255,255,0) 30px
+            );
+            background-size: 100% 60px;
+        }
+        
+        .pipe-h { height: 16px; border-radius: 0; }
+        .pipe-v { width: 16px; border-radius: 0; }
+
+        /* Pipe Locations */
+        .p-res-pump { left: 240px; top: 400px; width: 100px; }
+        .p-pump-up { left: 340px; top: 250px; height: 150px; }
+        .p-pump-top { left: 340px; top: 250px; width: 220px; }
+        .p-tank-in { left: 550px; top: 250px; height: 60px; }
+        .p-tank-out { left: 630px; top: 480px; height: 50px; }
+        .p-valve-run { left: 630px; top: 530px; width: 200px; }
+        .p-valve-out { left: 830px; top: 530px; width: 100px; }
+
+        /* --- Seamless Elbows --- */
+        .pipe-elbow {
+            position: absolute;
+            width: 16px; height: 16px;
+            z-index: 2;
+            box-shadow: 0 3px 5px rgba(0,0,0,0.2);
+            overflow: hidden;
+        }
+
+        .elbow-bottom-right {
+            border-radius: 0 0 16px 0;
+            background: linear-gradient(135deg, var(--pipe-grad-1) 0%, var(--pipe-grad-2) 50%, var(--pipe-grad-3) 100%);
+            border-right: 1px solid #999; border-bottom: 1px solid #999;
+        }
+        .elbow-top-left {
+            border-radius: 16px 0 0 0;
+            background: linear-gradient(135deg, var(--pipe-grad-3) 0%, var(--pipe-grad-2) 50%, var(--pipe-grad-1) 100%);
+            border-top: 1px solid #999; border-left: 1px solid #999;
+        }
+        .elbow-top-right {
+            border-radius: 0 16px 0 0;
+            background: linear-gradient(-135deg, var(--pipe-grad-1) 0%, var(--pipe-grad-2) 50%, var(--pipe-grad-3) 100%);
+            border-top: 1px solid #999; border-right: 1px solid #999;
+        }
+        .elbow-bottom-left {
+            border-radius: 0 0 0 16px;
+            background: linear-gradient(45deg, var(--pipe-grad-3) 0%, var(--pipe-grad-2) 50%, var(--pipe-grad-1) 100%);
+            border-bottom: 1px solid #999; border-left: 1px solid #999;
+        }
+
+        .el-1 { left: 340px; top: 400px; }
+        .el-2 { left: 340px; top: 250px; }
+        .el-3 { left: 550px; top: 250px; }
+        .el-4 { left: 630px; top: 530px; }
+
+        @keyframes flow-h { from { background-position: 0 0; } to { background-position: 60px 0; } }
+        @keyframes flow-v { from { background-position: 0 0; } to { background-position: 0 60px; } }
+        @keyframes flow-up { from { background-position: 0 0; } to { background-position: 0 -60px; } }
+
+        .pipe-v.flowing.up::after { animation: flow-up 0.8s linear infinite; }
+        .pipe-v.flowing.down::after { animation: flow-v 0.8s linear infinite; }
+
+
+        /* --- Tank --- */
+        .tank-wrapper {
+            position: absolute;
+            left: 500px; top: 280px; width: 260px; height: 220px;
+        }
+
+        .tank-glass {
+            width: 100%; height: 100%;
+            border-radius: 12px;
+            background: linear-gradient(135deg, rgba(200, 215, 225, 0.4), rgba(255,255,255,0.1));
+            border: 2px solid #78909c; border-top: none;
+            box-shadow: inset 0 0 20px rgba(0,0,0,0.1), 0 10px 20px rgba(0,0,0,0.15);
+            position: relative; overflow: hidden;
+            backdrop-filter: blur(3px); z-index: 10;
+        }
+
+        .tank-ticks {
+            position: absolute; right: 0; top: 10%; bottom: 10%; width: 20px;
+            display: flex; flex-direction: column; justify-content: space-between; z-index: 12;
+        }
+        .tick { width: 10px; height: 1px; background: #546e7a; margin-left: auto; margin-right: 5px; }
+        .tick.major { width: 15px; background: #37474f; height: 2px; }
+
+        .liquid {
+            position: absolute; bottom: 0; left: 0; right: 0; height: 0%;
+            background: linear-gradient(to bottom, var(--liquid-top), var(--liquid-color));
+            transition: height 0.1s linear; opacity: 0.9;
+            box-shadow: 0 -5px 15px rgba(64, 196, 255, 0.4);
+        }
+
+        .liquid::after {
+            content: ''; position: absolute; top: 0; left: 0; right: 0; height: 10px;
+            background: rgba(255,255,255,0.4); transform: scaleY(0.5); transform-origin: top;
+        }
+
+        .bubble {
+            position: absolute; background: rgba(255,255,255,0.6);
+            border-radius: 50%; animation: rise 2s infinite ease-in;
+            bottom: -10px; border: 1px solid rgba(255,255,255,0.8);
+        }
+        @keyframes rise {
+            0% { transform: translateY(0) scale(1); opacity: 0; }
+            50% { opacity: 1; }
+            100% { transform: translateY(-200px) scale(1.5); opacity: 0; }
+        }
+
+        .tank-label {
+            position: absolute; top: -30px; left: 50%; transform: translateX(-50%);
+            font-weight: 800; color: var(--text-main);
+            letter-spacing: 2px; text-shadow: 0 1px 0 rgba(255,255,255,0.8);
+        }
+
+        /* --- Components --- */
+
+        .field-btn {
+            margin-top: 5px; padding: 4px 12px;
+            font-size: 11px; font-weight: bold; color: white;
+            background: #37474f; border: 1px solid #546e7a; border-radius: 4px;
+            cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+            text-transform: uppercase; letter-spacing: 0.5px;
+            transition: all 0.2s; z-index: 50;
+        }
+        .field-btn:hover { background: #455a64; }
+        .field-btn:active { background: #263238; box-shadow: inset 0 1px 2px rgba(0,0,0,0.5); }
+
+        .pump-unit {
+            position: absolute; left: 298px; top: 345px;
+            text-align: center; z-index: 20;
+            display: flex; flex-direction: column; align-items: center;
+        }
+        
+        .pump-body {
+            width: 100px; height: 100px; position: relative;
+            display: flex; justify-content: center; align-items: center;
+            filter: drop-shadow(2px 4px 6px rgba(0,0,0,0.3));
+        }
+
+        .pump-volute-shape {
+            transition: fill 0.3s ease; fill: var(--success);
+        }
+        .pump-unit.active .pump-volute-shape { fill: var(--danger); }
+        
+        .pump-impeller { transform-origin: 50px 60px; }
+        .pump-unit.active .pump-impeller { animation: spin-impeller 0.6s linear infinite; }
+        
+        @keyframes spin-impeller { 
+            from { transform: rotate(0deg); } to { transform: rotate(360deg); } 
+        }
+
+        .valve-unit {
+            position: absolute; left: 770px; top: 518px;
+            text-align: center; z-index: 20;
+            width: 60px; display: flex; flex-direction: column; align-items: center;
+        }
+
+        .valve-graphic { width: 60px; height: 40px; position: relative; }
+
+        .valve-body-shape { transition: fill 0.3s ease; fill: var(--success); }
+        .valve-actuator {
+            transform-origin: 50px 30px; transition: transform 0.3s ease-in-out;
+        }
+
+        .valve-unit.open .valve-body-shape { fill: var(--danger); }
+        .valve-unit.open .valve-actuator { transform: rotate(-90deg); }
+
+        .reservoir {
+            position: absolute; left: 100px; top: 400px; width: 140px; height: 80px;
+            background: linear-gradient(180deg, #b0bec5, #78909c);
+            border-radius: 8px 0 0 8px; border: 1px solid #78909c; border-right: none;
+            box-shadow: inset 0 5px 10px rgba(255,255,255,0.4), 5px 5px 15px rgba(0,0,0,0.2);
+        }
+        .reservoir-label {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            font-size: 12px; font-weight: bold; color: rgba(255,255,255,0.8);
+            text-align: center; width: 100%; text-shadow: 0 1px 2px rgba(0,0,0,0.5); pointer-events: none;
+        }
+        .res-water {
+            position: absolute; bottom: 0; left: 0; right: 0; height: 80%;
+            background: rgba(12, 194, 255, 0.15); border-bottom-left-radius: 8px;
+        }
+
+        .alarms {
+            position: absolute; left: 40px; top: 100px;
+            display: flex; flex-direction: column; gap: 10px;
+        }
+        .alarm-indicator {
+            width: 160px; padding: 10px 15px;
+            background: linear-gradient(180deg, #eceff1, #cfd8dc);
+            border: 1px solid #b0bec5; border-radius: 4px;
+            color: #546e7a; font-weight: bold; font-size: 12px;
+            display: flex; align-items: center; gap: 10px;
+            transition: all 0.2s; box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .led { 
+            width: 12px; height: 12px; border-radius: 50%; background: #90a4ae; 
+            box-shadow: inset 1px 1px 2px rgba(0,0,0,0.4); 
+        }
+        
+        .alarm-indicator.active {
+            background: linear-gradient(180deg, #ffcdd2, #ef9a9a);
+            border-color: #e57373; color: #c62828;
+        }
+        .alarm-indicator.active .led {
+            background: var(--danger); box-shadow: 0 0 8px var(--danger);
+            animation: blink 1s infinite;
+        }
+
+        @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+
+        .icon { width: 24px; height: 24px; fill: currentColor; }
+
+    </style>
+</head>
+<body>
+
+    <div id="hmi-scaler">
+        <div class="hmi-canvas">
+            <div class="status-bar">
+                <div class="system-title">
+                    <h1>Tank Process Unit 01</h1>
+                    <span>Water Treatment Facility</span>
+                </div>
+            </div>
+
+            <div class="process-area">
+                <div class="alarms">
+                    <div class="alarm-indicator" id="alm-hh">
+                        <div class="led"></div> HIGH-HIGH LEVEL
+                    </div>
+                    <div class="alarm-indicator" id="alm-ll">
+                        <div class="led"></div> LOW-LOW LEVEL
+                    </div>
+                </div>
+
+                <div class="process-tag tag-flow-in">
+                    <span class="tag-name">FIT-101</span>
+                    <span class="tag-val" id="val-flow-in">0</span>
+                    <span class="tag-unit">L/m</span>
+                </div>
+
+                <div class="process-tag tag-level">
+                    <span class="tag-name">LIT-200</span>
+                    <span class="tag-val" id="val-level">0</span>
+                    <span class="tag-unit">%</span>
+                </div>
+
+                <div class="process-tag tag-flow-out">
+                    <span class="tag-name">FIT-102</span>
+                    <span class="tag-val" id="val-flow-out">0</span>
+                    <span class="tag-unit">L/m</span>
+                </div>
+
+                <!-- PIPING SYSTEM -->
+                <div class="pipe pipe-h p-res-pump" id="pipe-1"></div>
+                <div class="pipe-elbow elbow-bottom-right el-1" id="elbow-1"></div>
+
+                <div class="pipe pipe-v p-pump-up" id="pipe-2"></div>
+                <div class="pipe-elbow elbow-top-left el-2" id="elbow-2"></div>
+
+                <div class="pipe pipe-h p-pump-top" id="pipe-3"></div>
+                <div class="pipe-elbow elbow-top-right el-3" id="elbow-3"></div>
+
+                <div class="pipe pipe-v p-tank-in" id="pipe-4"></div>
+
+                <div class="pipe pipe-v p-tank-out" id="pipe-5"></div>
+                <div class="pipe-elbow elbow-bottom-left el-4" id="elbow-4"></div>
+
+                <div class="pipe pipe-h p-valve-run" id="pipe-6"></div>
+                <div class="pipe pipe-h p-valve-out" id="pipe-7"></div>
+
+                <!-- RESERVOIR -->
+                <div class="reservoir">
+                    <div class="res-water"></div>
+                    <div class="reservoir-label">Underground<br>Reservoir</div>
+                </div>
+
+                <!-- PUMP -->
+                <div class="pump-unit" id="pump-unit">
+                    <div class="pump-body">
+                        <svg viewBox="0 0 100 100" width="100%" height="100%">
+                            <path d="M15 90 L85 90 L80 82 L20 82 Z" fill="#78909c" stroke="#546e7a" stroke-width="1"/>
+                            <rect x="40" y="10" width="20" height="40" fill="#90a4ae" stroke="#546e7a" stroke-width="1" />
+                            <rect x="35" y="5" width="30" height="8" rx="2" fill="#78909c" stroke="#546e7a" stroke-width="1" />
+                            <circle class="pump-volute-shape" cx="50" cy="60" r="28" stroke="#546e7a" stroke-width="2" />
+                            <circle cx="50" cy="60" r="12" fill="#78909c" stroke="#546e7a" stroke-width="1"/>
+                            <g class="pump-impeller">
+                                <circle cx="50" cy="60" r="4" fill="#37474f"/>
+                                <path d="M50 60 L50 42 A 18 18 0 0 1 66 69 Z" fill="#37474f" opacity="0.7"/>
+                                <path d="M50 60 L66 69 A 18 18 0 0 1 34 69 Z" fill="#37474f" opacity="0.7"/>
+                                <path d="M50 60 L34 69 A 18 18 0 0 1 50 42 Z" fill="#37474f" opacity="0.7"/>
+                            </g>
+                        </svg>
+                    </div>
+                    <div style="margin-top:0px; font-weight:bold; color:#37474f; font-size:12px;">P-101</div>
+                    <button class="field-btn" id="btn-pump" onclick="togglePump('start')">START</button>
+                </div>
+
+                <!-- TANK -->
+                <div class="tank-wrapper">
+                    <div class="tank-label">TK-200</div>
+                    <div class="tank-glass">
+                        <div class="tank-ticks">
+                            <div class="tick major"></div><div class="tick"></div><div class="tick"></div><div class="tick"></div>
+                            <div class="tick major"></div><div class="tick"></div><div class="tick"></div><div class="tick"></div>
+                            <div class="tick major"></div>
+                        </div>
+                        <div class="liquid" id="tank-liquid"></div>
+                        <div id="bubbles-container"></div>
+                    </div>
+                </div>
+
+                <!-- VALVE -->
+                <div class="valve-unit" id="valve-unit">
+                    <div class="valve-graphic">
+                        <svg viewBox="0 0 100 60" width="100%" height="100%" style="overflow: visible;">
+                            <path class="valve-body-shape" d="M0,0 L45,30 L0,60 Z" stroke="#546e7a" stroke-width="1"/>
+                            <path class="valve-body-shape" d="M100,0 L55,30 L100,60 Z" stroke="#546e7a" stroke-width="1"/>
+                            <g class="valve-actuator">
+                                <rect x="42" y="-10" width="16" height="80" rx="8" fill="#263238" stroke="#102027" stroke-width="1" />
+                                <circle cx="50" cy="30" r="10" fill="#37474f" stroke="#102027" stroke-width="2" />
+                                <circle cx="50" cy="30" r="4" fill="#546e7a" />
+                            </g>
+                        </svg>
+                    </div>
+                    <div style="margin-top:15px; font-weight:bold; color:#37474f; font-size:12px;">XV-101</div>
+                    <button class="field-btn" id="btn-valve" onclick="toggleValve('open')">OPEN</button>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- Configuration ---
+        // Backend API URL (assumes same host)
+        const API_URL = '/api';
+
+        // --- DOM Elements ---
+        const elLiquid = document.getElementById('tank-liquid');
+        const elValLevel = document.getElementById('val-level');
+        const elValFlowIn = document.getElementById('val-flow-in');
+        const elValFlowOut = document.getElementById('val-flow-out');
+        const elPumpUnit = document.getElementById('pump-unit');
+        const elValveUnit = document.getElementById('valve-unit');
+        const elBtnPump = document.getElementById('btn-pump');
+        const elBtnValve = document.getElementById('btn-valve');
+        const elAlmHH = document.getElementById('alm-hh');
+        const elAlmLL = document.getElementById('alm-ll');
+        const bubbleContainer = document.getElementById('bubbles-container');
+
+        // Pipe segments for animation
+        const supplyPipes = ['pipe-1', 'pipe-2', 'pipe-3', 'pipe-4'];
+        const supplyElbows = ['elbow-1', 'elbow-2', 'elbow-3'];
+        const drainPipes = ['pipe-5', 'pipe-6', 'pipe-7'];
+        const drainElbows = ['elbow-4'];
+
+        // --- API Communications ---
+
+        async function fetchState() {
+            try {
+                const response = await fetch(`${API_URL}/data`);
+                const data = await response.json();
+                updateUI(data);
+            } catch (error) {
+                console.error("Connection lost:", error);
+            }
+        }
+
+        async function sendCommand(device, action) {
+            try {
+                await fetch(`${API_URL}/control`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ device, action })
+                });
+                // Immediate fetch to update UI quickly
+                fetchState();
+            } catch (error) {
+                console.error("Command failed:", error);
+            }
+        }
+
+        // --- Controls Wrappers ---
+        
+        function togglePump() {
+            // Check current state from UI class to toggle
+            const isRunning = elPumpUnit.classList.contains('active');
+            sendCommand('pump', isRunning ? 'stop' : 'start');
+        }
+
+        function toggleValve() {
+            const isOpen = elValveUnit.classList.contains('open');
+            sendCommand('valve', isOpen ? 'close' : 'open');
+        }
+
+        // --- UI Updates ---
+
+        function updateUI(data) {
+            // Update Tank
+            elLiquid.style.height = data.tank_level + '%';
+            elValLevel.innerText = data.tank_level.toFixed(1);
+            
+            // Update Flows
+            elValFlowIn.innerText = data.flow_in;
+            elValFlowOut.innerText = data.flow_out;
+
+            // Pump State
+            if(data.pump_on) {
+                elPumpUnit.classList.add('active');
+                elBtnPump.innerText = "STOP";
+                elBtnPump.style.backgroundColor = "var(--danger)"; // Red for Stop
+                setPipeFlow(supplyPipes, supplyElbows, true, 'up');
+            } else {
+                elPumpUnit.classList.remove('active');
+                elBtnPump.innerText = "START";
+                elBtnPump.style.backgroundColor = "#37474f"; // Grey for Start
+                setPipeFlow(supplyPipes, supplyElbows, false);
+            }
+
+            // Valve State
+            if(data.valve_open) {
+                elValveUnit.classList.add('open');
+                elBtnValve.innerText = "CLOSE";
+                elBtnValve.style.backgroundColor = "var(--danger)"; // Red for Close
+                setPipeFlow(drainPipes, drainElbows, data.tank_level > 0, 'down');
+            } else {
+                elValveUnit.classList.remove('open');
+                elBtnValve.innerText = "OPEN";
+                elBtnValve.style.backgroundColor = "#37474f"; // Grey for Open
+                setPipeFlow(drainPipes, drainElbows, false);
+            }
+
+            // Alarms
+            if(data.tank_level >= 95) elAlmHH.classList.add('active');
+            else elAlmHH.classList.remove('active');
+
+            if(data.tank_level <= 10) elAlmLL.classList.add('active');
+            else elAlmLL.classList.remove('active');
+
+            // Bubbles fx
+            if(data.pump_on && Math.random() > 0.7) createBubble();
+        }
+
+        function setPipeFlow(pipeIds, elbowIds, flowing, direction) {
+            pipeIds.forEach(id => {
+                const el = document.getElementById(id);
+                if(flowing) {
+                    el.classList.add('flowing');
+                    if(direction) el.classList.add(direction);
+                } else {
+                    el.classList.remove('flowing', 'up', 'down');
+                }
+            });
+            elbowIds.forEach(id => {
+                const el = document.getElementById(id);
+                if(flowing) el.classList.add('flowing');
+                else el.classList.remove('flowing');
+            });
+        }
+
+        function createBubble() {
+            const b = document.createElement('div');
+            b.classList.add('bubble');
+            const size = Math.random() * 10 + 5;
+            b.style.width = size + 'px';
+            b.style.height = size + 'px';
+            b.style.left = (Math.random() * 80 + 10) + '%';
+            b.style.bottom = '-20px';
+            bubbleContainer.appendChild(b);
+            setTimeout(() => b.remove(), 2000);
+        }
+
+        // --- Loops ---
+        
+        // Poll backend every 100ms
+        setInterval(fetchState, 100);
+
+        // --- Scaling Logic ---
+        function handleResize() {
+            const container = document.getElementById('hmi-scaler');
+            const baseWidth = 1040;
+            const baseHeight = 700;
+            const scale = Math.min(window.innerWidth / baseWidth, window.innerHeight / baseHeight) * 0.9;
+            container.style.transform = `scale(${scale})`;
+        }
+
+        window.addEventListener('resize', handleResize);
+        handleResize();
+
+    </script>
+</body>
+</html>
