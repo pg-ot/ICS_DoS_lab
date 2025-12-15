@@ -42,4 +42,7 @@ def control():
     return jsonify({'status': 'success'})
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=False)
+    print("[HMI] Flask development server (single-threaded, no production hardening)")
+    print("[HMI] Running on http://0.0.0.0:5000")
+    # Single-threaded mode makes it vulnerable to DoS
+    app.run(host='0.0.0.0', port=5000, debug=False, threaded=False)
